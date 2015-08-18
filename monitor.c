@@ -76,6 +76,9 @@
 #include "qapi-event.h"
 #include "qmp-introspect.h"
 #include "sysemu/block-backend.h"
+#if defined(TARGET_PPC)
+#include "hw/ppc/ppc.h"
+#endif
 
 /* for hmp_info_irq/pic */
 #if defined(TARGET_SPARC)

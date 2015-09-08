@@ -2106,7 +2106,9 @@ expr_error(Monitor *mon, const char *fmt, ...)
 static int get_monitor_def(target_long *pval, const char *name)
 {
     const MonitorDef *md = target_monitor_defs();
+    uint64_t val;
     void *ptr;
+    int rc;
 
     if (md == NULL) {
         return -1;
@@ -2134,7 +2136,11 @@ static int get_monitor_def(target_long *pval, const char *name)
             return 0;
         }
     }
-    return -1;
+    rc = target_extra_monitor_def(&val, name);
+    if (rc >= 0) {
+        *pval = val;
+    }
+    return rc;
 }
 
 static void next(void)

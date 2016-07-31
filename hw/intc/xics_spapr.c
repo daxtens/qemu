@@ -295,8 +295,7 @@ static void xics_spapr_initfn(Object *obj)
 
     ics = ICS(object_new(TYPE_ICS));
     object_property_add_child(obj, "ics", OBJECT(ics), NULL);
-    ics->xics = xics;
-    QLIST_INSERT_HEAD(&xics->ics, ics, list);
+    xics_add_ics(xics, ics);
 }
 
 static void xics_spapr_class_init(ObjectClass *oc, void *data)

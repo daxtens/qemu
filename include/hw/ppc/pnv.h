@@ -54,6 +54,8 @@ typedef struct sPowerNVMachineState {
     XICSState *xics;
     uint32_t  num_chips;
     PnvChip   chips[PNV_MAX_CHIPS];
+    hwaddr fdt_addr;
+    void *fdt_skel;
 } sPowerNVMachineState;
 
 extern void pnv_lpc_create(PnvChip *chip, bool has_serirq);

@@ -8424,6 +8424,7 @@ POWERPC_FAMILY(POWER5P)(ObjectClass *oc, void *data)
                  POWERPC_FLAG_BUS_CLK;
     pcc->l1_dcache_size = 0x8000;
     pcc->l1_icache_size = 0x10000;
+    pcc->threads_per_core = 2;
 }
 
 static void powerpc_get_compat(Object *obj, Visitor *v, const char *name,
@@ -8640,6 +8641,7 @@ POWERPC_FAMILY(POWER7)(ObjectClass *oc, void *data)
     pcc->l1_dcache_size = 0x8000;
     pcc->l1_icache_size = 0x8000;
     pcc->interrupts_big_endian = ppc_cpu_interrupts_big_endian_lpcr;
+    pcc->threads_per_core = 4;
 }
 
 static void init_proc_POWER8(CPUPPCState *env)
@@ -8771,6 +8773,7 @@ POWERPC_FAMILY(POWER8)(ObjectClass *oc, void *data)
     pcc->l1_dcache_size = 0x8000;
     pcc->l1_icache_size = 0x8000;
     pcc->interrupts_big_endian = ppc_cpu_interrupts_big_endian_lpcr;
+    pcc->threads_per_core = 8;
 }
 
 #if !defined(CONFIG_USER_ONLY)
@@ -9532,6 +9535,12 @@ static void ppc_cpu_realizefn(DeviceState *dev, Error **errp)
 #endif
 
 #if !defined(CONFIG_USER_ONLY)
+    if (pcc->threads_per_core == 0) {
+        pcc->threads_per_core = 1;
+    }
+    if (max_smt > pcc->threads_per_core) {
+        max_smt = pcc->threads_per_core;
+    }
     if (smp_threads > max_smt) {
         error_setg(errp, "Cannot support more than %d threads on PPC with %s",
                    max_smt, kvm_enabled() ? "KVM" : "TCG");
@@ -9552,7 +9561,7 @@ static void ppc_cpu_realizefn(DeviceState *dev, Error **errp)
     }
 
 #if !defined(CONFIG_USER_ONLY)
-    cpu->cpu_dt_id = (cs->cpu_index / smp_threads) * max_smt
+    cpu->cpu_dt_id = (cs->cpu_index / smp_threads) * pcc->threads_per_core
         + (cs->cpu_index % smp_threads);
 
     if (kvm_enabled() && !kvm_vcpu_id_is_valid(cpu->cpu_dt_id)) {

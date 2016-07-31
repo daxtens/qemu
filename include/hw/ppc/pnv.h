@@ -56,6 +56,7 @@ typedef struct sPowerNVMachineState {
     PnvChip   chips[PNV_MAX_CHIPS];
     hwaddr fdt_addr;
     void *fdt_skel;
+    Notifier powerdown_notifier;
 } sPowerNVMachineState;
 
 extern void pnv_lpc_create(PnvChip *chip, bool has_serirq);

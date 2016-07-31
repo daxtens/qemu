@@ -20,10 +20,12 @@
 #define _PPC_PNV_H
 
 #include "hw/boards.h"
+typedef struct XScomBus XScomBus;
 
 /* Should we turn that into a QOjb of some sort ? */
 typedef struct PnvChip {
     uint32_t         chip_id;
+    XScomBus         *xscom;
 } PnvChip;
 
 #define PNV_MAX_CHIPS   1

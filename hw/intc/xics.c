@@ -745,7 +745,7 @@ static const TypeInfo ics_simple_info = {
 
 static const TypeInfo ics_info = {
     .name = TYPE_ICS,
-    .parent = TYPE_DEVICE,
+    .parent = TYPE_SYS_BUS_DEVICE,
     .abstract = true,
     .instance_size = sizeof(ICSState),
     .class_size = sizeof(ICSStateClass),

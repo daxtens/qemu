@@ -156,7 +156,7 @@ struct ICSStateClass {
 
 struct ICSState {
     /*< private >*/
-    DeviceState parent_obj;
+    SysBusDevice parent_obj;
     /*< public >*/
     uint32_t nr_irqs;
     uint32_t offset;

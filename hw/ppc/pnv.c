@@ -67,6 +67,7 @@
 
 #include "hw/compat.h"
 #include "hw/ipmi/ipmi.h"
+#include "qemu/cutils.h"
 
 #include <libfdt.h>
 
@@ -875,6 +876,9 @@ static void ppc_powernv_init(MachineState *machine)
         qemu_register_reset(powernv_cpu_reset, cpu);
     }
 
+    if (ram_size < (1 * G_BYTE))
+        error_report("Warning: skiboot may not work with < 1GB of RAM");
+
     /* allocate RAM */
     memory_region_allocate_system_memory(ram, NULL, "ppc_powernv.ram",
                                          ram_size);
@@ -990,7 +994,7 @@ static void powernv_machine_class_init(ObjectClass *oc, void *data)
     mc->no_parallel = 1;
     mc->default_boot_order = NULL;
     mc->kvm_type = powernv_kvm_type;
-
+    mc->default_ram_size = 1 * G_BYTE;
 }
 
 static const TypeInfo powernv_machine_info = {

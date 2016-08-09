@@ -287,7 +287,7 @@ static uint64_t *pnv_phb3_ioda_access(PnvPhb3State *phb,
         break;
     case IODA2_TBL_TVT:
         tptr = phb->ioda_TVT;
-        mask = 255;
+        mask = 511;
         break;
     case IODA2_TBL_TCAM:
     case IODA2_TBL_TDR:

@@ -546,7 +546,7 @@ static void pnv_create_chip(sPowerNVMachineState *s, unsigned int chip_no,
     chip->chip_id = chip_no;
 
     /* Set up XSCOM bus */
-    xscom_create(chip);
+    xscom_create(chip, s->chip_type);
 
     /* Create PSI */
     pnv_psi_create(chip, s->xics);
@@ -797,6 +797,48 @@ static void pnv_powerdown_notify(Notifier *n, void *opaque)
 }
 
 
+static char *pnv_get_chip_type(Object *obj, Error **errp)
+{
+    sPowerNVMachineState *pnv = POWERNV_MACHINE(obj);
+
+    switch(pnv->chip_type) {
+    case PNV_CHIP_P8:
+        return g_strdup("P8");
+    case PNV_CHIP_P8NVL:
+        return g_strdup("P8NVL");
+    case PNV_CHIP_P8E:
+    default:
+        return g_strdup("P8E");
+    }
+}
+
+static void pnv_set_chip_type(Object *obj, const char *value, Error **errp)
+{
+    sPowerNVMachineState *pnv = POWERNV_MACHINE(obj);
+
+    if (!strcasecmp(value, "P8E")) {
+        pnv->chip_type = PNV_CHIP_P8E;
+    } else if (!strcasecmp(value, "P8")) {
+        pnv->chip_type = PNV_CHIP_P8;
+    } else if (!strcasecmp(value, "P8NVL")) {
+        pnv->chip_type = PNV_CHIP_P8NVL;
+    } else {
+        error_setg(errp, "Unknown chip type");
+    }
+}
+
+static void powernv_machine_initfn(Object *obj)
+{
+    sPowerNVMachineState *pnv = POWERNV_MACHINE(obj);
+
+    pnv->chip_type = PNV_CHIP_P8E;
+    object_property_add_str(obj, "chip-type",
+                            pnv_get_chip_type, pnv_set_chip_type, NULL);
+    object_property_set_description(obj, "chip-type",
+                                    "Specifies processor chip type (P8, P8NVL)",
+                                    NULL);
+}
+
 static void ppc_powernv_reset(void)
 {
     sPowerNVMachineState *pnv = POWERNV_MACHINE(qdev_get_machine());
@@ -1002,6 +1044,7 @@ static const TypeInfo powernv_machine_info = {
     .parent        = TYPE_MACHINE,
     .abstract      = true,
     .instance_size = sizeof(sPowerNVMachineState),
+    .instance_init = powernv_machine_initfn,
     .class_init    = powernv_machine_class_init,
 };
 

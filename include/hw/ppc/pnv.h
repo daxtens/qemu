@@ -28,6 +28,12 @@ typedef struct XICSState XICSState;
 typedef struct PnvOCCState PnvOCCState;
 typedef struct PCIBus PCIBus;
 
+typedef enum PnvChipType {
+    PNV_CHIP_P8E,   /* AKA Murano (default) */
+    PNV_CHIP_P8,    /* AKA Venice */
+    PNV_CHIP_P8NVL, /* AKA Naples */
+} PnvChipType;
+
 /* Should we turn that into a QOjb of some sort ? */
 typedef struct PnvChip {
     uint32_t         chip_id;
@@ -53,6 +59,7 @@ typedef struct sPowerNVMachineState {
 
     XICSState *xics;
     uint32_t  num_chips;
+    PnvChipType chip_type;
     PnvChip   chips[PNV_MAX_CHIPS];
     hwaddr fdt_addr;
     void *fdt_skel;

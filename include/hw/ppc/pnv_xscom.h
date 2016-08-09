@@ -66,7 +66,7 @@ struct XScomBus {
     uint32_t chip_id;
 };
 
-extern void xscom_create(PnvChip *chip);
+extern void xscom_create(PnvChip *chip, PnvChipType chip_type);
 extern int xscom_populate_fdt(XScomBus *xscom, void *fdt);
 
 

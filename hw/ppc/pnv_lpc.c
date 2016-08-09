@@ -52,6 +52,7 @@ enum {
 
 typedef struct PnvLpcController {
     XScomDevice xd;
+    PnvPsiController *psi;
     uint64_t eccb_stat_reg;
     uint32_t eccb_data_reg;
     bool has_serirq;
@@ -79,6 +80,8 @@ typedef struct PnvLpcController {
     uint32_t opb_irq_mask;
 #define OPB_MASTER_LS_IRQ_POL   0x58
     uint32_t opb_irq_pol;
+#define OPB_MASTER_LS_IRQ_INPUT 0x5c
+    uint32_t opb_irq_input;
 
     /* LPC HC registers */
 #define LPC_HC_FW_SEG_IDSEL     0x24
@@ -273,39 +276,92 @@ static bool pnv_lpc_xscom_write(XScomDevice *dev, uint32_t range,
     return true;
 }
 
+static void pnv_lpc_eval_irqs(PnvLpcController *lpc)
+{
+    bool lpc_to_opb_irq = false;
+    static bool old_l2o;
+
+    /* Update LPC controller to OPB line */
+    if (lpc->lpc_hc_irqser_ctrl & LPC_HC_IRQSER_EN) {
+        uint32_t irqs;
+
+        irqs = lpc->lpc_hc_irqstat & lpc->lpc_hc_irqmask;
+        lpc_to_opb_irq = (irqs != 0);
+    }
+
+    /* We don't honor the polarity register, it's pointless
+     * and unused anyway
+     */
+    if (lpc_to_opb_irq) {
+        lpc->opb_irq_input |= OPB_MASTER_IRQ_LPC;
+    } else {
+        lpc->opb_irq_input &= ~OPB_MASTER_IRQ_LPC;
+    }
+
+    /* Update OPB internal latch */
+    lpc->opb_irq_stat |= lpc->opb_irq_input & lpc->opb_irq_mask;
+
+    if (0 && old_l2o != lpc_to_opb_irq) {
+        printf("EVAL: lpc2opb=%d (stat=%08x, mask=%08x)\n",
+               lpc_to_opb_irq, lpc->lpc_hc_irqstat, lpc->lpc_hc_irqmask);
+        printf("      opb_in=%08x, opb_stat=%08x\n",
+               lpc->opb_irq_input, lpc->opb_irq_stat);
+    }
+    /* Reflect the interrupt */
+    pnv_psi_irq_set(lpc->psi, PSIHB_IRQ_LPC_I2C, lpc->opb_irq_stat != 0);
+}
+
 static void pnv_lpc_isa_irq_handler(void *opaque, int n, int level)
 {
-     /* XXX TODO */
+    PnvLpcController *lpc = opaque;
+
+    if (n > 16) {
+        return;
+    }
+    /* The Naples HW latches the 1 levels, clearing is done by SW */
+    if (level) {
+        lpc->lpc_hc_irqstat |= LPC_HC_IRQ_SERIRQ0 >> n;
+        pnv_lpc_eval_irqs(lpc);
+    }
 }
 
 static uint64_t lpc_hc_read(void *opaque, hwaddr addr, unsigned size)
 {
     PnvLpcController *lpc = opaque;
+    uint32_t val;
 
     if (size != 4) {
         fprintf(stderr, "lpc_hc_read: Invalid size %d\n", size);
         return 0xfffffffffffffffful;
     }
 
-    OPBDBG("LPC HC read @0x%08x\n", (unsigned int)addr);
-
     switch(addr) {
     case LPC_HC_FW_SEG_IDSEL:
-        return lpc->lpc_hc_fw_seg_idsel;
+        val = lpc->lpc_hc_fw_seg_idsel;
+        break;
     case LPC_HC_FW_RD_ACC_SIZE:
-        return lpc->lpc_hc_fw_rd_acc_size;
+        val = lpc->lpc_hc_fw_rd_acc_size;
+        break;
     case LPC_HC_IRQSER_CTRL:
-        return lpc->lpc_hc_irqser_ctrl;
+        val = lpc->lpc_hc_irqser_ctrl;
+        break;
     case LPC_HC_IRQMASK:
-        return lpc->lpc_hc_irqmask;
+        val = lpc->lpc_hc_irqmask;
+        break;
     case LPC_HC_IRQSTAT:
-        return lpc->lpc_hc_irqstat;
+        val = lpc->lpc_hc_irqstat;
+        break;
     case LPC_HC_ERROR_ADDRESS:
-        return lpc->lpc_hc_error_addr;
+        val = lpc->lpc_hc_error_addr;
+        break;
     default:
         OPBDBG("LPC HC Unimplemented register !\n");
         return 0xfffffffffffffffful;
     }
+
+    OPBDBG("LPC HC read @0x%08x = %08x\n", (unsigned int)addr, val);
+
+    return val;
 }
 
 static void lpc_hc_write(void *opaque, hwaddr addr, uint64_t val,
@@ -318,24 +374,32 @@ static void lpc_hc_write(void *opaque, hwaddr addr, uint64_t val,
         return;
     }
 
-    OPBDBG("LPC HC write @0x%08x\n", (unsigned int)addr);
+    OPBDBG("LPC HC write @0x%08x = %08x\n", (unsigned int)addr, (uint32_t)val);
 
     /* XXX Filter out reserved bits */
 
     switch(addr) {
     case LPC_HC_FW_SEG_IDSEL:
         /* XXX Actually figure out how that works as this impact
-         * memory regions/aliases\
+         * memory regions/aliases
          */
         lpc->lpc_hc_fw_seg_idsel = val;
+        break;
     case LPC_HC_FW_RD_ACC_SIZE:
         lpc->lpc_hc_fw_rd_acc_size = val;
+        break;
     case LPC_HC_IRQSER_CTRL:
         lpc->lpc_hc_irqser_ctrl = val;
+        pnv_lpc_eval_irqs(lpc);
+        break;
     case LPC_HC_IRQMASK:
         lpc->lpc_hc_irqmask = val;
+        pnv_lpc_eval_irqs(lpc);
+        break;
     case LPC_HC_IRQSTAT:
         lpc->lpc_hc_irqstat &= ~val;
+        pnv_lpc_eval_irqs(lpc);
+        break;
     case LPC_HC_ERROR_ADDRESS:
         break;
     default:
@@ -360,25 +424,34 @@ static const MemoryRegionOps lpc_hc_ops = {
 static uint64_t opb_master_read(void *opaque, hwaddr addr, unsigned size)
 {
     PnvLpcController *lpc = opaque;
+    uint32_t val;
 
     if (size != 4) {
         fprintf(stderr, "opb_master_read: Invalid size %d\n", size);
         return 0xfffffffffffffffful;
     }
 
-    OPBDBG("OPB MASTER read @0x%08x\n", (unsigned int)addr);
-
     switch(addr) {
     case OPB_MASTER_LS_IRQ_STAT:
-        return lpc->opb_irq_stat;
+        val = lpc->opb_irq_stat;
+        break;
     case OPB_MASTER_LS_IRQ_MASK:
-        return lpc->opb_irq_mask;
+        val = lpc->opb_irq_mask;
+        break;
     case OPB_MASTER_LS_IRQ_POL:
-        return lpc->opb_irq_pol;
+        val = lpc->opb_irq_pol;
+        break;
+    case OPB_MASTER_LS_IRQ_INPUT:
+        val = lpc->opb_irq_input;
+        break;
     default:
         OPBDBG("OPB MASTER Unimplemented register !\n");
         return 0xfffffffffffffffful;
     }
+
+    OPBDBG("OPB MASTER read @0x%08x = %08x\n", (unsigned int)addr, val);
+
+    return val;
 }
 
 static void opb_master_write(void *opaque, hwaddr addr,
@@ -391,19 +464,24 @@ static void opb_master_write(void *opaque, hwaddr addr,
         return;
     }
 
-    OPBDBG("OPB MASTER write @0x%08x\n", (unsigned int)addr);
+    OPBDBG("OPB MASTER write @0x%08x = %08x\n",
+           (unsigned int)addr, (uint32_t)val);
 
     switch(addr) {
     case OPB_MASTER_LS_IRQ_STAT:
         lpc->opb_irq_stat &= ~val;
+        pnv_lpc_eval_irqs(lpc);
         break;
     case OPB_MASTER_LS_IRQ_MASK:
-        /* XXX Filter out reserved bits */
         lpc->opb_irq_mask = val;
+        pnv_lpc_eval_irqs(lpc);
         break;
     case OPB_MASTER_LS_IRQ_POL:
-        /* XXX Filter out reserved bits */
         lpc->opb_irq_pol = val;
+        pnv_lpc_eval_irqs(lpc);
+        break;
+    case OPB_MASTER_LS_IRQ_INPUT:
+        /* Read only */
         break;
     default:
         OPBDBG("OPB MASTER Unimplemented register !\n");
@@ -492,6 +570,7 @@ void pnv_lpc_create(PnvChip *chip, bool has_serirq)
     dev = qdev_create(&chip->xscom->bus, TYPE_PNV_LPC_CONTROLLER);
     lpc = PNV_LPC_CONTROLLER(dev);
     lpc->has_serirq = has_serirq;
+    lpc->psi = chip->psi;
     qdev_init_nofail(dev);
     chip->lpc = lpc;
     chip->lpc_bus = lpc->isa_bus;

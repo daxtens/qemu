@@ -57,6 +57,7 @@ typedef struct XScomState {
 
     MemoryRegion mem;
     int32_t chip_id;
+    PnvChipType chip_type;
     XScomBus *bus;
 } XScomState;
 
@@ -149,7 +150,17 @@ static uint64_t xscom_read(void *opaque, hwaddr addr, unsigned width)
     /* Handle some SCOMs here before dispatch */
     switch(pcba) {
     case 0xf000f:
-        val = 0x221EF04980000000;
+        switch (s->chip_type) {
+        case PNV_CHIP_P8E:
+            val = 0x221ef04980000000UL;
+            break;
+        case PNV_CHIP_P8:
+            val = 0x220ea04980000000;
+            break;
+        case PNV_CHIP_P8NVL:
+            val = 0x120d304980000000;
+            break;
+        }
         break;
     case 0x1010c00:     /* PIBAM FIR */
     case 0x1010c03:     /* PIBAM FIR MASK */
@@ -284,7 +295,7 @@ static const TypeInfo xscom_bus_info = {
     .instance_size = sizeof(XScomBus),
 };
 
-void xscom_create(PnvChip *chip)
+void xscom_create(PnvChip *chip, PnvChipType chip_type)
 {
     DeviceState *dev;
     XScomState *xdev;
@@ -301,6 +312,7 @@ void xscom_create(PnvChip *chip)
     xb->chip_id = chip->chip_id;
     xdev = XSCOM(dev);
     xdev->bus = xb;
+    xdev->chip_type = chip_type;
     chip->xscom = xb;
 }
 

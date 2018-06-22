@@ -443,6 +443,64 @@ static const TypeInfo xive_source_info = {
 };
 
 /*
+ * XiveEQ helpers
+ */
+
+void xive_eq_reset(XiveEQ *eq)
+{
+    memset(eq, 0, sizeof(*eq));
+
+    /* switch off the escalation and notification ESBs */
+    eq->w1 = EQ_W1_ESe_Q | EQ_W1_ESn_Q;
+}
+
+static void xive_eq_pic_print_info(XiveEQ *eq, Monitor *mon)
+{
+    uint64_t qaddr_base = (((uint64_t)(eq->w2 & 0x0fffffff)) << 32) | eq->w3;
+    uint32_t qindex = GETFIELD(EQ_W1_PAGE_OFF, eq->w1);
+    uint32_t qgen = GETFIELD(EQ_W1_GENERATION, eq->w1);
+    uint32_t qsize = GETFIELD(EQ_W0_QSIZE, eq->w0);
+    uint32_t qentries = 1 << (qsize + 10);
+
+    uint32_t server = GETFIELD(EQ_W6_NVT_INDEX, eq->w6);
+    uint8_t priority = GETFIELD(EQ_W7_F0_PRIORITY, eq->w7);
+
+    monitor_printf(mon, "%c%c%c%c%c prio:%d server:%03d eq:@%08"PRIx64
+                   "% 6d/%5d ^%d",
+                   eq->w0 & EQ_W0_VALID ? 'v' : '-',
+                   eq->w0 & EQ_W0_ENQUEUE ? 'q' : '-',
+                   eq->w0 & EQ_W0_UCOND_NOTIFY ? 'n' : '-',
+                   eq->w0 & EQ_W0_BACKLOG ? 'b' : '-',
+                   eq->w0 & EQ_W0_ESCALATE_CTL ? 'e' : '-',
+                   priority, server, qaddr_base, qindex, qentries, qgen);
+}
+
+static void xive_eq_push(XiveEQ *eq, uint32_t data)
+{
+    uint64_t qaddr_base = (((uint64_t)(eq->w2 & 0x0fffffff)) << 32) | eq->w3;
+    uint32_t qsize = GETFIELD(EQ_W0_QSIZE, eq->w0);
+    uint32_t qindex = GETFIELD(EQ_W1_PAGE_OFF, eq->w1);
+    uint32_t qgen = GETFIELD(EQ_W1_GENERATION, eq->w1);
+
+    uint64_t qaddr = qaddr_base + (qindex << 2);
+    uint32_t qdata = cpu_to_be32((qgen << 31) | (data & 0x7fffffff));
+    uint32_t qentries = 1 << (qsize + 10);
+
+    if (dma_memory_write(&address_space_memory, qaddr, &qdata, sizeof(qdata))) {
+        qemu_log_mask(LOG_GUEST_ERROR, "XIVE: failed to write EQ data @0x%"
+                      HWADDR_PRIx "\n", qaddr);
+        return;
+    }
+
+    qindex = (qindex + 1) % qentries;
+    if (qindex == 0) {
+        qgen ^= 1;
+        eq->w1 = SETFIELD(EQ_W1_GENERATION, eq->w1, qgen);
+    }
+    eq->w1 = SETFIELD(EQ_W1_PAGE_OFF, eq->w1, qindex);
+}
+
+/*
  * XIVE Router (aka. Virtualization Controller or IVRE)
  */
 
@@ -458,6 +516,81 @@ int xive_router_set_ive(XiveRouter *xrtr, uint32_t lisn, XiveIVE *ive)
     XiveRouterClass *xrc = XIVE_ROUTER_GET_CLASS(xrtr);
 
     return xrc->set_ive(xrtr, lisn, ive);
+}
+
+int xive_router_get_eq(XiveRouter *xrtr, uint8_t eq_blk, uint32_t eq_idx,
+                       XiveEQ *eq)
+{
+   XiveRouterClass *xrc = XIVE_ROUTER_GET_CLASS(xrtr);
+
+   return xrc->get_eq(xrtr, eq_blk, eq_idx, eq);
+}
+
+int xive_router_set_eq(XiveRouter *xrtr, uint8_t eq_blk, uint32_t eq_idx,
+                       XiveEQ *eq)
+{
+   XiveRouterClass *xrc = XIVE_ROUTER_GET_CLASS(xrtr);
+
+   return xrc->set_eq(xrtr, eq_blk, eq_idx, eq);
+}
+
+/*
+ * An EQ trigger can come from an event trigger (IPI or HW) or from
+ * another chip. We don't model the PowerBus but the EQ trigger
+ * message has the same parameters than in the function below.
+ */
+static void xive_router_eq_notify(XiveRouter *xrtr, uint8_t eq_blk,
+                                  uint32_t eq_idx, uint32_t eq_data)
+{
+    XiveEQ eq;
+    uint8_t priority;
+    uint8_t format;
+
+    /* EQD cache lookup */
+    if (xive_router_get_eq(xrtr, eq_blk, eq_idx, &eq)) {
+        qemu_log_mask(LOG_GUEST_ERROR, "XIVE: No EQ %x/%x\n", eq_blk, eq_idx);
+        return;
+    }
+
+    if (!(eq.w0 & EQ_W0_VALID)) {
+        qemu_log_mask(LOG_GUEST_ERROR, "XIVE: EQ %x/%x is invalid\n",
+                      eq_blk, eq_idx);
+        return;
+    }
+
+    if (eq.w0 & EQ_W0_ENQUEUE) {
+        xive_eq_push(&eq, eq_data);
+        xive_router_set_eq(xrtr, eq_blk, eq_idx, &eq);
+    }
+
+    /*
+     * The W7 format depends on the F bit in W6. It defines the type
+     * of the notification :
+     *
+     *   F=0 : single or multiple VP notification
+     *   F=1 : User level Event-Based Branch (EBB) notification, no
+     *         priority
+     */
+    format = GETFIELD(EQ_W6_FORMAT_BIT, eq.w6);
+    priority = GETFIELD(EQ_W7_F0_PRIORITY, eq.w7);
+
+    /* The EQ is masked */
+    if (format == 0 && priority == 0xff) {
+        return;
+    }
+
+    /*
+     * Check the EQ ESn (Event State Buffer for notification) for
+     * futher even coalescing in the Router
+     */
+    if (!(eq.w0 & EQ_W0_UCOND_NOTIFY)) {
+        qemu_log_mask(LOG_UNIMP, "XIVE: !UCOND_NOTIFY not implemented\n");
+        return;
+    }
+
+    /*
+     * Follows IVPE notification
+     */
 }
 
 static void xive_router_notify(XiveFabric *xf, uint32_t lisn)
@@ -486,6 +619,14 @@ static void xive_router_notify(XiveFabric *xf, uint32_t lisn)
         /* Notification completed */
         return;
     }
+
+    /*
+     * The event trigger becomes an EQ trigger
+     */
+    xive_router_eq_notify(xrtr,
+                          GETFIELD(IVE_EQ_BLOCK, ive.w),
+                          GETFIELD(IVE_EQ_INDEX, ive.w),
+                          GETFIELD(IVE_EQ_DATA,  ive.w));
 }
 
 static Property xive_router_properties[] = {
@@ -518,11 +659,31 @@ static const TypeInfo xive_router_info = {
 void xive_router_print_ive(XiveRouter *xrtr, uint32_t lisn, XiveIVE *ive,
                            Monitor *mon)
 {
+    uint8_t eq_blk;
+    uint32_t eq_idx;
+
     if (!(ive->w & IVE_VALID)) {
         return;
     }
 
-    monitor_printf(mon, "  %08x %s\n", lisn, ive->w & IVE_MASKED ? "M" : " ");
+    eq_idx = GETFIELD(IVE_EQ_INDEX, ive->w);
+    eq_blk = GETFIELD(IVE_EQ_BLOCK, ive->w);
+
+    monitor_printf(mon, "  %08x %s eqidx:%04x eqblk:%02x ", lisn,
+                   ive->w & IVE_MASKED ? "M" : " ", eq_idx, eq_blk);
+
+    if (!(ive->w & IVE_MASKED)) {
+        XiveEQ eq;
+
+        if (!xive_router_get_eq(xrtr, eq_blk, eq_idx, &eq)) {
+            xive_eq_pic_print_info(&eq, mon);
+            monitor_printf(mon, " data:%08x",
+                           (int) GETFIELD(IVE_EQ_DATA, ive->w));
+        } else {
+            monitor_printf(mon, "no eq ?!");
+        }
+    }
+    monitor_printf(mon, "\n");
 }
 
 /*

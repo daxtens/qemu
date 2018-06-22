@@ -38,6 +38,19 @@ typedef struct sPAPRXive {
     MemoryRegion tm_mmio;
 } sPAPRXive;
 
+#define SPAPR_XIVE_CLASS(klass) \
+     OBJECT_CLASS_CHECK(sPAPRXiveClass, (klass), TYPE_SPAPR_XIVE)
+#define SPAPR_XIVE_GET_CLASS(obj) \
+     OBJECT_GET_CLASS(sPAPRXiveClass, (obj), TYPE_SPAPR_XIVE)
+
+typedef struct sPAPRXiveClass {
+    XiveRouterClass parent_class;
+
+    void (*synchronize_state)(sPAPRXive *xive);
+    int  (*pre_save)(sPAPRXive *xsrc);
+    int  (*post_load)(sPAPRXive *xsrc, int version_id);
+} sPAPRXiveClass;
+
 bool spapr_xive_irq_enable(sPAPRXive *xive, uint32_t lisn, bool lsi);
 bool spapr_xive_irq_disable(sPAPRXive *xive, uint32_t lisn);
 void spapr_xive_pic_print_info(sPAPRXive *xive, Monitor *mon);

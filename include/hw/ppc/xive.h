@@ -209,6 +209,26 @@ int xive_router_set_eq(XiveRouter *xrtr, uint8_t eq_blk, uint32_t eq_idx,
                        XiveEQ *eq);
 
 /*
+ * XIVE EQ ESBs
+ */
+
+#define TYPE_XIVE_EQ_SOURCE "xive-eq-source"
+#define XIVE_EQ_SOURCE(obj) \
+    OBJECT_CHECK(XiveEQSource, (obj), TYPE_XIVE_EQ_SOURCE)
+
+typedef struct XiveEQSource {
+    SysBusDevice parent;
+
+    uint32_t        nr_eqs;
+
+    /* ESB memory region */
+    uint32_t        esb_shift;
+    MemoryRegion    esb_mmio;
+
+    XiveRouter      *xrtr;
+} XiveEQSource;
+
+/*
  * For legacy compatibility, the exceptions define up to 256 different
  * priorities. P9 implements only 9 levels : 8 active levels [0 - 7]
  * and the least favored level 0xFF.

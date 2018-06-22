@@ -183,6 +183,9 @@ static inline void xive_source_irq_set(XiveSource *xsrc, uint32_t srcno,
     }
 }
 
+void xive_source_common_realize(XiveSource *xsrc, qemu_irq_handler handler,
+                                Error **errp);
+
 /*
  * XIVE Router
  */

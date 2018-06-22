@@ -55,6 +55,7 @@ bool spapr_xive_irq_enable(sPAPRXive *xive, uint32_t lisn, bool lsi);
 bool spapr_xive_irq_disable(sPAPRXive *xive, uint32_t lisn);
 void spapr_xive_pic_print_info(sPAPRXive *xive, Monitor *mon);
 qemu_irq spapr_xive_qirq(sPAPRXive *xive, uint32_t lisn);
+void spapr_xive_common_realize(sPAPRXive *xive, Error **errp);
 
 /*
  * sPAPR VP and EQ indexing helpers

@@ -84,9 +84,8 @@ static void spapr_xive_instance_init(Object *obj)
     object_property_add_child(obj, "eq_source", OBJECT(&xive->eq_source), NULL);
 }
 
-static void spapr_xive_realize(DeviceState *dev, Error **errp)
+void spapr_xive_common_realize(sPAPRXive *xive, Error **errp)
 {
-    sPAPRXive *xive = SPAPR_XIVE(dev);
     XiveSource *xsrc = &xive->source;
     XiveEQSource *eq_xsrc = &xive->eq_source;
     Error *local_err = NULL;
@@ -132,6 +131,18 @@ static void spapr_xive_realize(DeviceState *dev, Error **errp)
     /* Allocate the routing tables */
     xive->ivt = g_new0(XiveIVE, xive->nr_irqs);
     xive->eqdt = g_new0(XiveEQ, xive->nr_eqs);
+}
+
+static void spapr_xive_realize(DeviceState *dev, Error **errp)
+{
+    sPAPRXive *xive = SPAPR_XIVE(dev);
+    Error *local_err = NULL;
+
+    spapr_xive_common_realize(xive, &local_err);
+    if (local_err) {
+        error_propagate(errp, local_err);
+        return;
+    }
 
     /* TIMA */
     memory_region_init_io(&xive->tm_mmio, OBJECT(xive), &xive_tm_ops, xive,

@@ -1003,13 +1003,13 @@ static void xive_source_reset(DeviceState *dev)
     }
 }
 
-static void xive_source_realize(DeviceState *dev, Error **errp)
+void xive_source_common_realize(XiveSource *xsrc, qemu_irq_handler handler,
+                                Error **errp)
 {
-    XiveSource *xsrc = XIVE_SOURCE(dev);
     Object *obj;
     Error *local_err = NULL;
 
-    obj = object_property_get_link(OBJECT(dev), "xive", &local_err);
+    obj = object_property_get_link(OBJECT(xsrc), "xive", &local_err);
     if (!obj) {
         error_propagate(errp, local_err);
         error_prepend(errp, "required link 'xive' not found: ");
@@ -1031,13 +1031,25 @@ static void xive_source_realize(DeviceState *dev, Error **errp)
         return;
     }
 
-    xsrc->qirqs = qemu_allocate_irqs(xive_source_set_irq, xsrc,
-                                     xsrc->nr_irqs);
+    xsrc->qirqs = qemu_allocate_irqs(handler, xsrc, xsrc->nr_irqs);
 
     xsrc->status = g_malloc0(xsrc->nr_irqs);
 
     xsrc->lsi_map = bitmap_new(xsrc->nr_irqs);
     xsrc->lsi_map_size = xsrc->nr_irqs;
+
+}
+
+static void xive_source_realize(DeviceState *dev, Error **errp)
+{
+    XiveSource *xsrc = XIVE_SOURCE(dev);
+    Error *local_err = NULL;
+
+    xive_source_common_realize(xsrc, xive_source_set_irq, &local_err);
+    if (local_err) {
+        error_propagate(errp, local_err);
+        return;
+    }
 
     memory_region_init_io(&xsrc->esb_mmio, OBJECT(xsrc),
                           &xive_source_esb_ops, xsrc, "xive.esb",

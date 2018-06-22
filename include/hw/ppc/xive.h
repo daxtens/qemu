@@ -197,6 +197,10 @@ typedef struct XiveRouterClass {
                    XiveEQ *eq);
     int (*set_eq)(XiveRouter *xrtr, uint8_t eq_blk, uint32_t eq_idx,
                    XiveEQ *eq);
+    int (*get_vp)(XiveRouter *xrtr, uint8_t vp_blk, uint32_t vp_idx,
+                   XiveVP *vp);
+    int (*set_vp)(XiveRouter *xrtr, uint8_t vp_blk, uint32_t vp_idx,
+                  XiveVP *vp);
 } XiveRouterClass;
 
 void xive_router_print_ive(XiveRouter *xrtr, uint32_t lisn, XiveIVE *ive,
@@ -207,6 +211,10 @@ int xive_router_get_eq(XiveRouter *xrtr, uint8_t eq_blk, uint32_t eq_idx,
                        XiveEQ *eq);
 int xive_router_set_eq(XiveRouter *xrtr, uint8_t eq_blk, uint32_t eq_idx,
                        XiveEQ *eq);
+int xive_router_get_vp(XiveRouter *xrtr, uint8_t vp_blk, uint32_t vp_idx,
+                       XiveVP *vp);
+int xive_router_set_vp(XiveRouter *xrtr, uint8_t vp_blk, uint32_t vp_idx,
+                       XiveVP *vp);
 
 /*
  * XIVE EQ ESBs

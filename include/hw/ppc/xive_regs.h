@@ -157,4 +157,26 @@ typedef struct XiveEQ {
 #define EQ_W7_F1_LOG_SERVER_ID  PPC_BITMASK32(1, 31)
 } XiveEQ;
 
+/* VP */
+typedef struct XiveVP {
+        uint32_t        w0;
+#define VP_W0_VALID             PPC_BIT32(0)
+        uint32_t        w1;
+        uint32_t        w2;
+        uint32_t        w3;
+        uint32_t        w4;
+        uint32_t        w5;
+        uint32_t        w6;
+        uint32_t        w7;
+        uint32_t        w8;
+#define VP_W8_GRP_VALID         PPC_BIT32(0)
+        uint32_t        w9;
+        uint32_t        wa;
+        uint32_t        wb;
+        uint32_t        wc;
+        uint32_t        wd;
+        uint32_t        we;
+        uint32_t        wf;
+} XiveVP;
+
 #endif /* _PPC_XIVE_REGS_H */

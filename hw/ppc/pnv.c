@@ -48,6 +48,10 @@
 #include "hw/pci/pci_bus.h"
 #include "hw/pci/pci_bridge.h"
 #include "hw/pci/msi.h"
+#include "hw/usb.h"
+#include "hw/ide/pci.h"
+#include "hw/ide/ahci.h"
+#include "net/net.h"
 
 #include <libfdt.h>
 
@@ -579,6 +583,104 @@ static ISABus *pnv_isa_create(PnvChip *chip, Error **errp)
     return PNV_CHIP_GET_CLASS(chip)->isa_create(chip, errp);
 }
 
+static PCIBus *pnv_chip_power8_pci_create(PnvChip *chip, Error **errp)
+{
+    Pnv8Chip *chip8 = PNV8_CHIP(chip);
+    PnvPHB3 *phb = &chip8->phbs[0];
+    PnvPBCQState *pbcq = &phb->pbcq;
+    PCIHostState *pcih = PCI_HOST_BRIDGE(phb);
+    PCIDevice *brdev;
+    PCIDevice *pdev;
+    PCIBus *parent;
+    uint8_t chassis = pbcq->chip_id * 4 + pbcq->phb_id;
+    uint8_t chassis_nr = 128;
+
+    /* Add root complex */
+    pdev = pci_create(pcih->bus, 0, TYPE_PNV_PHB3_RC);
+    qdev_prop_set_uint8(DEVICE(pdev), "chassis", chassis);
+    qdev_prop_set_uint16(DEVICE(pdev), "slot", 1);
+    object_property_add_child(OBJECT(phb), "phb3-rc", OBJECT(pdev), NULL);
+    qdev_init_nofail(DEVICE(pdev));
+
+    /* Setup bus for that chip */
+    parent = pci_bridge_get_sec_bus(PCI_BRIDGE(pdev));
+
+    brdev = pci_create(parent, 0, "pci-bridge");
+    qdev_prop_set_uint8(DEVICE(brdev), PCI_BRIDGE_DEV_PROP_CHASSIS_NR,
+                        chassis_nr);
+    brdev->qdev.id = "pci-bridge";
+    object_property_add_child(OBJECT(parent), "pci-bridge", OBJECT(brdev),
+                              NULL);
+    qdev_init_nofail(DEVICE(brdev));
+
+    return pci_bridge_get_sec_bus(PCI_BRIDGE(brdev));
+}
+
+static PCIBus *pnv_chip_power9_pci_create(PnvChip *chip, Error **errp)
+{
+    return NULL;
+}
+
+static PCIBus *pnv_pci_create(PnvChip *chip, Error **errp)
+{
+    return PNV_CHIP_GET_CLASS(chip)->pci_create(chip, errp);
+}
+
+/* Returns whether we want to use VGA or not */
+static int pnv_vga_init(PCIBus *pci_bus)
+{
+    switch (vga_interface_type) {
+    case VGA_NONE:
+        return false;
+    case VGA_DEVICE:
+        return true;
+    case VGA_STD:
+    case VGA_VIRTIO:
+        return pci_vga_init(pci_bus) != NULL;
+    default:
+        error_report("This vga model is not supported");
+        exit(1);
+    }
+}
+
+static void pnv_nic_init(PCIBus *pci_bus)
+{
+    int i;
+
+    for (i = 0; i < nb_nics; i++) {
+        NICInfo *nd = &nd_table[i];
+        DeviceState *dev;
+        PCIDevice *pdev;
+        Error *err = NULL;
+
+        pdev = pci_create(pci_bus, -1, "e1000");
+        dev = &pdev->qdev;
+        qdev_set_nic_properties(dev, nd);
+        object_property_set_bool(OBJECT(dev), true, "realized", &err);
+        if (err) {
+            error_report_err(err);
+            object_unparent(OBJECT(dev));
+            exit(1);
+        }
+    }
+}
+
+#define MAX_SATA_PORTS     6
+
+static void pnv_storage_init(PCIBus *pci_bus)
+{
+    DriveInfo *hd[MAX_SATA_PORTS];
+    PCIDevice *ahci;
+
+    /* Add an AHCI device. We use an ICH9 since that's all we have
+     * at hand for PCI AHCI but it shouldn't really matter
+     */
+    ahci = pci_create_simple(pci_bus, -1, "ich9-ahci");
+    g_assert(MAX_SATA_PORTS == ahci_get_num_ports(ahci));
+    ide_drive_get(hd, ahci_get_num_ports(ahci));
+    ahci_ide_create_devs(ahci, hd);
+}
+
 static void pnv_init(MachineState *machine)
 {
     PnvMachineState *pnv = PNV_MACHINE(machine);
@@ -587,6 +689,7 @@ static void pnv_init(MachineState *machine)
     long fw_size;
     int i;
     char *chip_typename;
+    bool has_gfx = false;
 
     /* allocate RAM */
     if (machine->ram_size < (1 * G_BYTE)) {
@@ -689,6 +792,34 @@ static void pnv_init(MachineState *machine)
      * host to powerdown */
     pnv->powerdown_notifier.notify = pnv_powerdown_notify;
     qemu_register_powerdown_notifier(&pnv->powerdown_notifier);
+
+    /* Add a PCI switch */
+    pnv->pci_bus = pnv_pci_create(pnv->chips[0], &error_fatal);
+    if (!pnv->pci_bus) {
+        return;
+    }
+
+    /* Graphics & USB */
+    if (pnv_vga_init(pnv->pci_bus)) {
+        has_gfx = true;
+        machine->usb |= defaults_enabled() && !machine->usb_disabled;
+    }
+
+    if (machine->usb) {
+        pci_create_simple(pnv->pci_bus, -1, "nec-usb-xhci");
+        if (has_gfx) {
+            USBBus *usb_bus = usb_bus_find(-1);
+
+            usb_create_simple(usb_bus, "usb-kbd");
+            usb_create_simple(usb_bus, "usb-mouse");
+        }
+    }
+
+    /* Add NIC */
+    pnv_nic_init(pnv->pci_bus);
+
+    /* Add storage */
+    pnv_storage_init(pnv->pci_bus);
 }
 
 /*
@@ -909,6 +1040,7 @@ static void pnv_chip_power8e_class_init(ObjectClass *klass, void *data)
     k->core_pir = pnv_chip_core_pir_p8;
     k->intc_create = pnv_chip_power8_intc_create;
     k->isa_create = pnv_chip_power8_isa_create;
+    k->pci_create = pnv_chip_power8_pci_create;
     k->xscom_base = 0x003fc0000000000ull;
     dc->desc = "PowerNV Chip POWER8E";
 
@@ -927,6 +1059,7 @@ static void pnv_chip_power8_class_init(ObjectClass *klass, void *data)
     k->core_pir = pnv_chip_core_pir_p8;
     k->intc_create = pnv_chip_power8_intc_create;
     k->isa_create = pnv_chip_power8_isa_create;
+    k->pci_create = pnv_chip_power8_pci_create;
     k->xscom_base = 0x003fc0000000000ull;
     dc->desc = "PowerNV Chip POWER8";
 
@@ -945,6 +1078,7 @@ static void pnv_chip_power8nvl_class_init(ObjectClass *klass, void *data)
     k->core_pir = pnv_chip_core_pir_p8;
     k->intc_create = pnv_chip_power8_intc_create;
     k->isa_create = pnv_chip_power8nvl_isa_create;
+    k->pci_create = pnv_chip_power8_pci_create;
     k->xscom_base = 0x003fc0000000000ull;
     dc->desc = "PowerNV Chip POWER8NVL";
 
@@ -1085,6 +1219,7 @@ static void pnv_chip_power9_class_init(ObjectClass *klass, void *data)
     k->core_pir = pnv_chip_core_pir_p9;
     k->intc_create = pnv_chip_power9_intc_create;
     k->isa_create = pnv_chip_power9_isa_create;
+    k->pci_create = pnv_chip_power9_pci_create;
     k->xscom_base = 0x00603fc00000000ull;
     dc->desc = "PowerNV Chip POWER9";
 

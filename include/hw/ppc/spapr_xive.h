@@ -57,5 +57,10 @@ int spapr_xive_target_to_eq(XiveRouter *xrtr, uint32_t target, uint8_t prio,
                             uint8_t *out_eq_blk, uint32_t *out_eq_idx);
 int spapr_xive_cpu_to_eq(XiveRouter *xrtr, PowerPCCPU *cpu, uint8_t prio,
                          uint8_t *out_eq_blk, uint32_t *out_eq_idx);
+bool spapr_xive_eq_is_valid(uint8_t priority);
+
+typedef struct sPAPRMachineState sPAPRMachineState;
+
+void spapr_xive_hcall_init(sPAPRMachineState *spapr);
 
 #endif /* PPC_SPAPR_XIVE_H */

@@ -211,6 +211,17 @@ static Object *spapr_irq_cpu_intc_create_xics(sPAPRMachineState *spapr,
     return icp_create(cpu, spapr->icp_type, XICS_FABRIC(spapr), errp);
 }
 
+static void spapr_irq_post_load_xics(sPAPRMachineState *spapr)
+{
+    if (!object_dynamic_cast(OBJECT(spapr->ics), TYPE_ICS_KVM)) {
+        CPUState *cs;
+        CPU_FOREACH(cs) {
+            PowerPCCPU *cpu = POWERPC_CPU(cs);
+            icp_resend(ICP(cpu->intc));
+        }
+    }
+}
+
 sPAPRIrq spapr_irq_xics = {
     .nr_irqs     = 0x1000,
     .ov5         = 0x0, /* XICS only */
@@ -222,6 +233,7 @@ sPAPRIrq spapr_irq_xics = {
     .print_info  = spapr_irq_print_info_xics,
     .dt_populate = spapr_irq_dt_populate_xics,
     .cpu_intc_create = spapr_irq_cpu_intc_create_xics,
+    .post_load   = spapr_irq_post_load_xics,
 };
 
 /*
@@ -347,6 +359,11 @@ static Object *spapr_irq_cpu_intc_create_xive(sPAPRMachineState *spapr,
                             XIVE_ROUTER(spapr->xive), errp);
 }
 
+static void spapr_irq_post_load_xive(sPAPRMachineState *spapr)
+{
+    ;
+}
+
 /*
  * XIVE uses the full IRQ number space. Set it to 8K to be compatible
  * with XICS.
@@ -363,6 +380,7 @@ sPAPRIrq spapr_irq_xive = {
     .print_info  = spapr_irq_print_info_xive,
     .dt_populate = spapr_irq_dt_populate_xive,
     .cpu_intc_create = spapr_irq_cpu_intc_create_xive,
+    .post_load   = spapr_irq_post_load_xive,
 };
 
 /*
@@ -456,4 +474,5 @@ sPAPRIrq spapr_irq_xics_legacy = {
     .print_info  = spapr_irq_print_info_xics,
     .dt_populate = spapr_irq_dt_populate_xics,
     .cpu_intc_create = spapr_irq_cpu_intc_create_xics,
+    .post_load   = spapr_irq_post_load_xics,
 };

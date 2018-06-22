@@ -184,6 +184,84 @@ static int spapr_xive_set_eq(XiveRouter *xrtr,
     return 0;
 }
 
+static int spapr_xive_get_vp(XiveRouter *xrtr,
+                             uint8_t vp_blk, uint32_t vp_idx, XiveVP *vp)
+{
+    sPAPRXive *xive = SPAPR_XIVE(xrtr);
+    uint32_t vcpu_id = spapr_xive_vp_to_target(xive, vp_blk, vp_idx);
+    PowerPCCPU *cpu = spapr_find_cpu(vcpu_id);
+
+    if (!cpu) {
+        return -1;
+    }
+
+    /*
+     * sPAPR does not maintain a VPD table. Return that the VP is
+     * valid if we have found a matching CPU
+     */
+    vp->w0 = VP_W0_VALID;
+    return 0;
+}
+
+static int spapr_xive_set_vp(XiveRouter *xrtr,
+                             uint8_t vp_blk, uint32_t vp_idx, XiveVP *vp)
+{
+    /* no VPD table */
+    return 0;
+}
+
+/*
+ * sPAPR VP indexing uses a simple mapping of the CPU vcpu_id
+ */
+int spapr_xive_target_to_vp(XiveRouter *xrtr, uint32_t target,
+                            uint8_t *out_vp_blk, uint32_t *out_vp_idx)
+{
+    PowerPCCPU *cpu = spapr_find_cpu(target);
+
+    if (!cpu) {
+        return -1;
+    }
+
+    if (out_vp_blk) {
+        *out_vp_blk = xrtr->chip_id;
+    }
+
+    if (out_vp_blk) {
+        *out_vp_idx = cpu->vcpu_id;
+    }
+    return 0;
+}
+
+/*
+ * sPAPR EQ indexing uses a simple mapping of the CPU vcpu_id, 8
+ * priorities per CPU
+ */
+int spapr_xive_cpu_to_eq(XiveRouter *xrtr, PowerPCCPU *cpu, uint8_t prio,
+                         uint8_t *out_eq_blk, uint32_t *out_eq_idx)
+{
+    if (!cpu) {
+        return -1;
+    }
+
+    if (out_eq_blk) {
+        *out_eq_blk = xrtr->chip_id;
+    }
+
+    if (out_eq_idx) {
+        *out_eq_idx = (cpu->vcpu_id << 3) + prio;
+    }
+    return 0;
+}
+
+int spapr_xive_target_to_eq(XiveRouter *xrtr, uint32_t target, uint8_t prio,
+                            uint8_t *out_eq_blk, uint32_t *out_eq_idx)
+{
+    PowerPCCPU *cpu = spapr_find_cpu(target);
+
+    return spapr_xive_cpu_to_eq(xrtr, cpu, prio, out_eq_blk, out_eq_idx);
+}
+
+
 static const VMStateDescription vmstate_spapr_xive_eq = {
     .name = TYPE_SPAPR_XIVE "/eq",
     .version_id = 1,
@@ -248,6 +326,8 @@ static void spapr_xive_class_init(ObjectClass *klass, void *data)
     xrc->set_ive = spapr_xive_set_ive;
     xrc->get_eq  = spapr_xive_get_eq;
     xrc->set_eq  = spapr_xive_set_eq;
+    xrc->get_vp  = spapr_xive_get_vp;
+    xrc->set_vp  = spapr_xive_set_vp;
 }
 
 static const TypeInfo spapr_xive_info = {

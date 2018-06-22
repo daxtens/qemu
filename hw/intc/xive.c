@@ -486,6 +486,8 @@ static uint32_t xive_tctx_hw_cam(XiveTCTX *tctx, bool block_group)
 static void xive_tctx_reset(void *dev)
 {
     XiveTCTX *tctx = XIVE_TCTX(dev);
+    PowerPCCPU *cpu = POWERPC_CPU(tctx->cs);
+    CPUPPCState *env = &cpu->env;
 
     memset(tctx->regs, 0, sizeof(tctx->regs));
 
@@ -500,6 +502,16 @@ static void xive_tctx_reset(void *dev)
      */
     tctx->regs[TM_QW1_OS + TM_PIPR] =
         ipb_to_pipr(tctx->regs[TM_QW1_OS + TM_IPB]);
+
+    /* The OS CAM is pushed by the hypervisor when the VP is scheduled
+     * to run on a HW thread. On QEMU, when running a pseries machine,
+     * hardwire the VCPU id as this is our VP identifier.
+     */
+    if (!msr_hv) {
+        uint32_t os_cam = cpu_to_be32(
+            TM_QW1W2_VO | tctx_cam_line(tctx->xrtr->chip_id, cpu->vcpu_id));
+        memcpy(&tctx->regs[TM_QW1_OS + TM_WORD2], &os_cam, 4);
+    }
 }
 
 static void xive_tctx_realize(DeviceState *dev, Error **errp)

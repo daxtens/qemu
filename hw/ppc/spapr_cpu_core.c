@@ -211,6 +211,7 @@ static const VMStateDescription vmstate_spapr_cpu_state = {
 static void spapr_realize_vcpu(PowerPCCPU *cpu, sPAPRMachineState *spapr,
                                Error **errp)
 {
+    sPAPRMachineClass *smc = SPAPR_MACHINE_GET_CLASS(spapr);
     CPUPPCState *env = &cpu->env;
     Error *local_err = NULL;
 
@@ -228,8 +229,7 @@ static void spapr_realize_vcpu(PowerPCCPU *cpu, sPAPRMachineState *spapr,
     qemu_register_reset(spapr_cpu_reset, cpu);
     spapr_cpu_reset(cpu);
 
-    cpu->intc = icp_create(OBJECT(cpu), spapr->icp_type, XICS_FABRIC(spapr),
-                           &local_err);
+    cpu->intc = smc->irq->cpu_intc_create(spapr, OBJECT(cpu), &local_err);
     if (local_err) {
         goto error_unregister;
     }

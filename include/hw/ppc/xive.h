@@ -235,6 +235,7 @@ int xive_router_get_vp(XiveRouter *xrtr, uint8_t vp_blk, uint32_t vp_idx,
                        XiveVP *vp);
 int xive_router_set_vp(XiveRouter *xrtr, uint8_t vp_blk, uint32_t vp_idx,
                        XiveVP *vp);
+void xive_router_notify(XiveFabric *xf, uint32_t lisn);
 
 /*
  * XIVE EQ ESBs

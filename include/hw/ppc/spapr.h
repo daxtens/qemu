@@ -109,6 +109,7 @@ struct sPAPRMachineClass {
                           unsigned n_dma, uint32_t *liobns, Error **errp);
     sPAPRResizeHPT resize_hpt_default;
     sPAPRCapabilities default_caps;
+    sPAPRIrq *irq;
 };
 
 /**
@@ -778,14 +779,6 @@ void spapr_do_system_reset_on_cpu(CPUState *cs, run_on_cpu_data arg);
 int spapr_get_vcpu_id(PowerPCCPU *cpu);
 void spapr_set_vcpu_id(PowerPCCPU *cpu, int cpu_index, Error **errp);
 PowerPCCPU *spapr_find_cpu(int vcpu_id);
-
-int spapr_irq_find(sPAPRMachineState *spapr, int num, bool align,
-                   Error **errp);
-#define spapr_irq_findone(spapr, errp) spapr_irq_find(spapr, 1, false, errp)
-int spapr_irq_claim(sPAPRMachineState *spapr, int irq, bool lsi, Error **errp);
-void spapr_irq_free(sPAPRMachineState *spapr, int irq, int num);
-qemu_irq spapr_qirq(sPAPRMachineState *spapr, int irq);
-
 
 int spapr_caps_pre_load(void *opaque);
 int spapr_caps_pre_save(void *opaque);

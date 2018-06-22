@@ -3972,6 +3972,7 @@ static void spapr_machine_2_12_class_options(MachineClass *mc)
     }
     smc->default_caps.caps[SPAPR_CAP_HPT_MAXPAGESIZE] = mps;
     smc->legacy_irq_allocation = true;
+    smc->irq = &spapr_irq_xics_legacy;
 }
 
 DEFINE_SPAPR_MACHINE(2_12, "2.12", false);

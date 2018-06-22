@@ -21,6 +21,8 @@
 #define SPAPR_IRQ_MSI        0x1300  /* Offset of the dynamic range covered
                                       * by the bitmap allocator */
 
+typedef struct sPAPRMachineState sPAPRMachineState;
+
 void spapr_irq_msi_init(sPAPRMachineState *spapr, uint32_t nr_msis);
 int spapr_irq_msi_alloc(sPAPRMachineState *spapr, uint32_t num, bool align,
                         Error **errp);

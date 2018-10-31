@@ -505,7 +505,12 @@ static hwaddr ppc_hash64_pteg_search(PowerPCCPU *cpu, hwaddr hash,
         return -1;
     }
     for (i = 0; i < HPTES_PER_GROUP; i++) {
+        /* pte0 contains the valid bit and must be read before pte1,
+         * otherwise we might see an old pte1 with a new valid bit and
+         * thus an inconsistent hpte value
+         */
         pte0 = ppc_hash64_hpte0(cpu, pteg, i);
+        smp_rmb();
         pte1 = ppc_hash64_hpte1(cpu, pteg, i);
 
         /* This compares V, B, H (secondary) and the AVPN */
@@ -938,7 +943,11 @@ void ppc_hash64_store_hpte(PowerPCCPU *cpu, hwaddr ptex,
      *
      * Another advantage is that none of those bits is affected by
      * the hash format change in arch v3.
+     *
+     * We also do a write barrier to ensure that the store is ordered
+     * after any other memory write that might have caused C to be set
      */
+    smp_wmb();
     stw_phys(CPU(cpu)->as, base + offset + 14 , pte1 & 0xffff);
 }
 

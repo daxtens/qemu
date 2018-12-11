@@ -927,8 +927,19 @@ void ppc_hash64_store_hpte(PowerPCCPU *cpu, hwaddr ptex,
         return;
     }
 
-    stq_phys(CPU(cpu)->as, base + offset, pte0);
-    stq_phys(CPU(cpu)->as, base + offset + HASH_PTE_SIZE_64 / 2, pte1);
+    /* In absence of a virtual hypervisor, this is only used to update
+     * the HPTE R and C bits. In this case, the hash table is directly
+     * accessible by the guest, so we need to be careful of races with
+     * the guest modifying it as well.
+     *
+     * The HW in this case performs byte stores to the relevant byte,
+     * we chose here to do a word store of the bottom 16-bits of the
+     * PTE. This covers those two bits and doesn't cover any SW bit.
+     *
+     * Another advantage is that none of those bits is affected by
+     * the hash format change in arch v3.
+     */
+    stw_phys(CPU(cpu)->as, base + offset + 14 , pte1 & 0xffff);
 }
 
 void ppc_hash64_tlb_flush_hpte(PowerPCCPU *cpu, target_ulong ptex,

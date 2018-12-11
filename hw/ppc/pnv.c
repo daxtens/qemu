@@ -955,6 +955,7 @@ static void pnv_chip_power8nvl_class_init(ObjectClass *klass, void *data)
 static void pnv_chip_power9_instance_init(Object *obj)
 {
     Pnv9Chip *chip9 = PNV9_CHIP(obj);
+    uint32_t i;
 
     object_initialize(&chip9->xive, sizeof(chip9->xive), TYPE_PNV_XIVE);
     object_property_add_child(obj, "xive", OBJECT(&chip9->xive), NULL);
@@ -975,6 +976,12 @@ static void pnv_chip_power9_instance_init(Object *obj)
     object_property_add_child(obj, "occ", OBJECT(&chip9->occ), NULL);
     object_property_add_const_link(OBJECT(&chip9->occ), "psi",
                                    OBJECT(&chip9->psi), &error_abort);
+
+    for (i = 0; i < PNV9_CHIP_MAX_PEC; i++) {
+        printf("PNV: Creating PEC %d\n", i);
+        object_initialize(&chip9->pecs[i], sizeof(chip9->pecs[i]), TYPE_PNV_PHB4_PEC);
+        object_property_add_child(obj, "pec[*]", OBJECT(&chip9->pecs[i]), NULL);
+    }
 }
 
 static void pnv_chip_quad_realize(Pnv9Chip *chip9, Error **errp)
@@ -1013,6 +1020,9 @@ static void pnv_chip_power9_realize(DeviceState *dev, Error **errp)
     Pnv9Chip *chip9 = PNV9_CHIP(dev);
     PnvChip *chip = PNV_CHIP(dev);
     Error *local_err = NULL;
+    uint32_t i;
+
+    printf("-> %s\n", __func__);
 
     pcc->parent_realize(dev, &local_err);
     if (local_err) {
@@ -1072,6 +1082,36 @@ static void pnv_chip_power9_realize(DeviceState *dev, Error **errp)
         return;
     }
     pnv_xscom_add_subregion(chip, PNV9_XSCOM_OCC_BASE, &chip9->occ.xscom_regs);
+
+
+    /* Create the PHB4 PECs */
+    for (i = 0; i < PNV9_CHIP_MAX_PEC; i++) {
+        PnvPhb4PecState *pec = &chip9->pecs[i];
+
+        printf("PNV: Initializing PEC %d\n", i);
+        object_property_set_int(OBJECT(pec), i, "index", &error_fatal);
+        object_property_set_int(OBJECT(pec), chip->chip_id, "chip-id", &error_fatal);
+        object_property_set_bool(OBJECT(pec), true, "realized", &local_err);
+        if (local_err) {
+            error_propagate(errp, local_err);
+            return;
+        }
+    }
+
+    /* Create the PHBs */
+    for (i = 0; i < pcc->num_phbs; i++) {
+        Object *obj = object_new(TYPE_PNV_PHB4);
+        object_property_set_int(obj, chip->chip_id, "chip-id", &error_fatal);
+        object_property_set_int(obj, i, "index", &error_fatal);
+        // qdev_set_parent_bus(DEVICE(pec), sysbus_get_default());
+        object_property_set_bool(obj, true, "realized", &local_err);
+        if (local_err) {
+            error_propagate(errp, local_err);
+            return;
+        }
+    }
+
+    printf("<- %s\n", __func__);
 }
 
 static void pnv_chip_power9_class_init(ObjectClass *klass, void *data)
@@ -1082,7 +1122,7 @@ static void pnv_chip_power9_class_init(ObjectClass *klass, void *data)
     k->chip_type = PNV_CHIP_POWER9;
     k->chip_cfam_id = 0x220d104900008000ull; /* P9 Nimbus DD2.0 */
     k->cores_mask = POWER9_CORE_MASK;
-    k->num_phbs = 0;
+    k->num_phbs = 6; /* Make it overridable !!! */
     k->core_pir = pnv_chip_core_pir_p9;
     k->intc_create = pnv_chip_power9_intc_create;
     k->isa_create = pnv_chip_power9_isa_create;
@@ -1284,7 +1324,7 @@ static void pnv_pic_print_info(InterruptStatsProvider *obj,
                                Monitor *mon)
 {
     PnvMachineState *pnv = PNV_MACHINE(obj);
-    int i, j;
+    int i, j, k;
     CPUState *cs;
 
     CPU_FOREACH(cs) {
@@ -1306,6 +1346,17 @@ static void pnv_pic_print_info(InterruptStatsProvider *obj,
 
              pnv_xive_pic_print_info(&chip9->xive, mon);
              pnv_psi_pic_print_info(&chip9->psi, mon);
+
+             for (j = 0; j < PNV9_CHIP_MAX_PEC; j++) {
+                 PnvPhb4PecState *pec = &chip9->pecs[j];
+                 for (k = 0; k < pec->num_stacks; k++) {
+                     PnvPHB4 *phb = pec->stacks[k]->phb;
+
+                     if (phb) {
+                         pnv_phb4_pic_print_info(phb, mon);
+                     }
+                 }
+             }
         } else {
             Pnv8Chip *chip8 = PNV8_CHIP(chip);
 

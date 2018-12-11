@@ -658,6 +658,11 @@ static void vm_change_state_handler(void *opaque, int running, RunState state)
     Error *local_err = NULL;
     int i;
 
+    /* The KVM XIVE device is not in use */
+    if (xive->fd == -1) {
+        return;
+    }
+
     /*
      * Restore the sources to their initial state. This is called when
      * the VM resumes after a stop or a migration.
@@ -713,6 +718,11 @@ static int spapr_xive_kvm_pre_save(sPAPRXive *xive)
 {
     Error *local_err = NULL;
     CPUState *cs;
+
+    /* The KVM XIVE device is not in use */
+    if (xive->fd == -1) {
+        return 0;
+    }
 
     /* Grab the EAT */
     spapr_xive_kvm_get_eas_state(xive, &local_err);

@@ -558,6 +558,19 @@ static void spapr_populate_cpu_dt(CPUState *cs, void *fdt, int offset,
                           pcc->radix_page_info->count *
                           sizeof(radix_AP_encodings[0]))));
     }
+
+    /*
+     * We set this property to let the guest know that it can use the large
+     * decrementer and its width in bits. This means we must be on a processor
+     * with a large decrementer and the hypervisor must support it. In TCG the
+     * large decrementer is always supported, in KVM we check the hypervisor
+     * capability.
+     */
+    if (pcc->large_decr_bits && ((!kvm_enabled()) ||
+                                 kvmppc_has_cap_large_decr())) {
+        _FDT((fdt_setprop_u32(fdt, offset, "ibm,dec-bits",
+                              pcc->large_decr_bits)));
+    }
 }
 
 static void spapr_populate_cpus_dt_node(void *fdt, sPAPRMachineState *spapr)
@@ -1674,6 +1687,11 @@ static void spapr_machine_reset(void)
     }
 
     spapr_irq_reset(spapr, &error_fatal);
+
+    /* We have to do this after vcpus are created since it calls ioctls */
+    if (kvm_enabled()) {
+        kvmppc_check_cap_large_decr();
+    }
 
     qemu_devices_reset();
 

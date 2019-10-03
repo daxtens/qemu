@@ -478,6 +478,23 @@ static void pnv_dt_power_mgt(void *fdt)
     _FDT(fdt_setprop_cell(fdt, off, "ibm,enabled-stop-levels", 0xc0000000));
 }
 
+static void pnv_dt_secureboot(void *fdt) {
+	int node;
+	const char compat[] = "ibm,secureboot-v2";
+	const uint32_t hw_key_hash[] = {
+			0x40d487ff, 0x7380ed6a, 0xd54775d5, 0x795fea0d, 0xe2f541fe,
+                       0xa9db06b8, 0x466a42a3, 0x20e65f75, 0xb4866546, 0x0017d907,
+                       0x515dc2a5, 0xf9fc5095, 0x4d6ee0c9, 0xb67d219d, 0xfb708535,
+                       0x1d01d6d1
+	};
+	node = fdt_add_subnode(fdt, 0, "ibm,secureboot");
+	_FDT((fdt_setprop(fdt, node, "compatible", compat, sizeof(compat))));
+	_FDT((fdt_setprop(fdt, node, "trusted-enabled", NULL, 0)));
+	_FDT((fdt_setprop_cell(fdt, node, "hw-key-hash-size", 0x40)));
+	_FDT((fdt_setprop(fdt, node, "hw-key-hash", hw_key_hash, sizeof(hw_key_hash))));
+
+}
+
 static void *pnv_dt_create(MachineState *machine)
 {
     const char plat_compat[] = "qemu,powernv\0ibm,powernv";
@@ -537,6 +554,8 @@ static void *pnv_dt_create(MachineState *machine)
     if (pnv_is_power9(pnv)) {
         pnv_dt_power_mgt(fdt);
     }
+
+    pnv_dt_secureboot(fdt);
 
     return fdt;
 }

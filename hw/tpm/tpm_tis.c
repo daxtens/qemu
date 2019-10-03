@@ -998,9 +998,9 @@ static void tpm_tis_realizefn(DeviceState *dev, Error **errp)
     }
 
     isa_init_irq(&s->busdev, &s->irq, s->irq_num);
-
+	/* HACK */
     memory_region_add_subregion(isa_address_space(ISA_DEVICE(dev)),
-                                TPM_TIS_ADDR_BASE, &s->mmio);
+                                0, &s->mmio);
 
     if (s->ppi_enabled) {
         tpm_ppi_init(&s->ppi, isa_address_space(ISA_DEVICE(dev)),

@@ -50,6 +50,9 @@
 #include "hw/char/serial.h"
 #include "hw/timer/mc146818rtc.h"
 
+#include "sysemu/tpm.h"
+#include "hw/acpi/tpm.h"
+
 #include <libfdt.h>
 
 #define FDT_MAX_SIZE            (1 * MiB)
@@ -405,6 +408,28 @@ static void pnv_dt_ipmi_bt(ISADevice *d, void *fdt, int lpc_off)
                            fdt_get_phandle(fdt, lpc_off))));
 }
 
+static void pnv_dt_tpm(ISADevice *d, void *fdt, int lpc_off)
+{
+    const char compatible[] = "qemu-tpm\0tcg,tpm-tis-mmio";
+    uint32_t io_regs[] = {
+        cpu_to_be32(0),
+        cpu_to_be32(TPM_TIS_ADDR_BASE),
+        cpu_to_be32(5 << 12)
+    };
+    char *name;
+    int node;
+ 
+    name = g_strdup_printf("%s@%x", qdev_fw_name(DEVICE(d)), TPM_TIS_ADDR_BASE);
+    node = fdt_add_subnode(fdt, lpc_off, name);
+    _FDT(node);
+    g_free(name);
+
+    _FDT((fdt_setprop(fdt, node, "reg", io_regs, sizeof(io_regs))));
+    _FDT((fdt_setprop(fdt, node, "compatible", compatible,
+                      sizeof(compatible))));
+}
+
+
 typedef struct ForeachPopulateArgs {
     void *fdt;
     int offset;
@@ -421,6 +446,8 @@ static int pnv_dt_isa_device(DeviceState *dev, void *opaque)
         pnv_dt_serial(d, args->fdt, args->offset);
     } else if (object_dynamic_cast(OBJECT(dev), "isa-ipmi-bt")) {
         pnv_dt_ipmi_bt(d, args->fdt, args->offset);
+    } else if (object_dynamic_cast(OBJECT(dev), TYPE_TPM_TIS)) {
+        pnv_dt_tpm(d, args->fdt, args->offset);
     } else {
         error_report("unknown isa device %s@i%x", qdev_fw_name(dev),
                      d->ioport_id);

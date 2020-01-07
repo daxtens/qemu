@@ -1157,6 +1157,13 @@ static void spapr_dt_hypervisor(SpaprMachineState *spapr, void *fdt)
     }
 }
 
+static void spapr_dt_stb(SpaprMachineState *spapr, void *fdt)
+{
+    _FDT(fdt_setprop_cell(fdt, 0, "ibm,fw-secure-boot", 1));
+    _FDT(fdt_setprop_cell(fdt, 0, "ibm,secure-boot", 2));
+}
+
+
 void *spapr_build_fdt(SpaprMachineState *spapr, bool reset, size_t space)
 {
     MachineState *machine = MACHINE(spapr);
@@ -1262,6 +1269,9 @@ void *spapr_build_fdt(SpaprMachineState *spapr, bool reset, size_t space)
     if (kvm_enabled()) {
         spapr_dt_hypervisor(spapr, fdt);
     }
+
+    /* /ibm,secureboot */
+    spapr_dt_stb(spapr, fdt);
 
     /* Build memory reserve map */
     if (reset) {

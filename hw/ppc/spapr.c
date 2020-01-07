@@ -1234,6 +1234,18 @@ static void spapr_dt_hypervisor(SpaprMachineState *spapr, void *fdt)
     }
 }
 
+static void spapr_dt_stb(SpaprMachineState *spapr, void *fdt)
+{
+    int secureboot;
+
+    _FDT(secureboot = fdt_add_subnode(fdt, 0, "ibm,secureboot"));
+    /* todo: what version? */
+    _FDT(fdt_setprop_string(fdt, secureboot, "compatible", "ibm,secureboot"));
+    _FDT(fdt_setprop(fdt, secureboot, "os-secureboot-enforcing", NULL, 0));
+    _FDT(fdt_setprop(fdt, secureboot, "trusted-enabled", NULL, 0));
+}
+
+
 static void *spapr_build_fdt(SpaprMachineState *spapr)
 {
     MachineState *machine = MACHINE(spapr);
@@ -1343,6 +1355,9 @@ static void *spapr_build_fdt(SpaprMachineState *spapr)
     if (kvm_enabled()) {
         spapr_dt_hypervisor(spapr, fdt);
     }
+
+    /* /ibm,secureboot */
+    spapr_dt_stb(spapr, fdt);
 
     /* Build memory reserve map */
     if (spapr->kernel_size) {

@@ -1161,6 +1161,7 @@ static void spapr_dt_stb(SpaprMachineState *spapr, void *fdt)
 {
     _FDT(fdt_setprop_cell(fdt, 0, "ibm,fw-secure-boot", 1));
     _FDT(fdt_setprop_cell(fdt, 0, "ibm,secure-boot", 2));
+    _FDT(fdt_setprop_cell(fdt, 0, "ibm,trusted-boot", 1));
 }
 
 

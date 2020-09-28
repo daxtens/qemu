@@ -1159,9 +1159,16 @@ static void spapr_dt_hypervisor(SpaprMachineState *spapr, void *fdt)
 
 static void spapr_dt_stb(SpaprMachineState *spapr, void *fdt)
 {
-    _FDT(fdt_setprop_cell(fdt, 0, "ibm,fw-secure-boot", 1));
-    _FDT(fdt_setprop_cell(fdt, 0, "ibm,secure-boot", 2));
-    _FDT(fdt_setprop_cell(fdt, 0, "ibm,trusted-boot", 1));
+    /*
+     * This is not meaningful for KVM as there's no agreed semantics
+     * for what fw-secure-boot would mean (host secure boot only gives you
+     * integrity for the host kernel, not host qemu). Leave it off for now.
+     * _FDT(fdt_setprop_cell(fdt, 0, "ibm,fw-secure-boot", 1));
+     */
+    if (spapr->secure_boot)
+        _FDT(fdt_setprop_cell(fdt, 0, "ibm,secure-boot", 2));
+    if (spapr->trusted_boot)
+        _FDT(fdt_setprop_cell(fdt, 0, "ibm,trusted-boot", 1));
 }
 
 
@@ -3318,6 +3325,34 @@ static void spapr_set_host_serial(Object *obj, const char *value, Error **errp)
     spapr->host_serial = g_strdup(value);
 }
 
+static bool spapr_get_secure_boot(Object *obj, Error **errp)
+{
+    SpaprMachineState *spapr = SPAPR_MACHINE(obj);
+
+    return spapr->secure_boot;
+}
+
+static void spapr_set_secure_boot(Object *obj, bool value, Error **errp)
+{
+    SpaprMachineState *spapr = SPAPR_MACHINE(obj);
+
+    spapr->secure_boot = value;
+}
+
+static bool spapr_get_trusted_boot(Object *obj, Error **errp)
+{
+    SpaprMachineState *spapr = SPAPR_MACHINE(obj);
+
+    return spapr->trusted_boot;
+}
+
+static void spapr_set_trusted_boot(Object *obj, bool value, Error **errp)
+{
+    SpaprMachineState *spapr = SPAPR_MACHINE(obj);
+
+    spapr->trusted_boot = value;
+}
+
 static void spapr_instance_init(Object *obj)
 {
     SpaprMachineState *spapr = SPAPR_MACHINE(obj);
@@ -3384,6 +3419,19 @@ static void spapr_instance_init(Object *obj)
         &error_abort);
     object_property_set_description(obj, "host-serial",
         "Host serial number to advertise in guest device tree", &error_abort);
+
+    object_property_add_bool(obj, "secure-boot",
+                             spapr_get_secure_boot, spapr_set_secure_boot,
+                             &error_abort);
+    object_property_set_description(obj, "secure-boot",
+                              "Enforce secure boot (where supported by firmware)",
+                              &error_abort);
+    object_property_add_bool(obj, "trusted-boot",
+                             spapr_get_trusted_boot, spapr_set_trusted_boot,
+                             &error_abort);
+    object_property_set_description(obj, "trusted-boot",
+                              "Enable trusted boot (where supported by firmware, requires TPM)",
+                              &error_abort);
 }
 
 static void spapr_machine_finalizefn(Object *obj)
